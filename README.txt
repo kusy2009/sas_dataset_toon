@@ -26,14 +26,23 @@ TOON_format_specification.txt    	TOON format specification
 QUICK START
 ================================================================================
 
-1. Copy macros to your SAS environment:
-   - Include sas2toon.sas and toon2sas.sas in your session
+/* 1. Include the macros */
+%include "/path/to/macros/sas2toon.sas";
+%include "/path/to/macros/toon2sas.sas";
 
-2. Convert SAS dataset to TOON:
-   %sas2toon(libname=WORK, dataset=MYDATASET, outfile=/path/to/output.toon);
+/* 2. Convert SAS dataset to TOON */
+%sas2toon(
+    libname=WORK,
+    dataset=MYDATASET,
+    outfile=/path/to/output.toon
+);
 
-3. Convert TOON to SAS dataset:
-   %toon2sas(infile=/path/to/input.toon, libname=WORK, dataset=NEWDATA);
+/* 3. Convert TOON back to SAS */
+%toon2sas(
+    infile=/path/to/input.toon,
+    libname=WORK,
+    dataset=NEWDATA
+);
 
 ================================================================================
 REQUIREMENTS
