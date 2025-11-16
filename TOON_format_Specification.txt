@@ -1,0 +1,212 @@
+================================================================================
+TOON Format Specification (v2.0)
+================================================================================
+
+OVERVIEW
+================================================================================
+
+TOON (Token-Oriented Object Notation) is a compact, human-readable data format
+optimized for LLM (Large Language Model) prompts. It combines:
+  - YAML-style indentation for structure
+  - CSV-style tabular layout for uniform arrays
+  - Explicit length and field specifications
+
+Compared to JSON, TOON uses 30-60% fewer tokens, making it ideal for:
+  - Clinical trial datasets (CDISC ADaM, SDTM, SEND)
+  - Data interchange between SAS and other systems
+  - Machine learning data pipelines
+  - Regulatory submissions
+
+STRUCTURE
+================================================================================
+
+A TOON document has two main sections:
+
+1. Metadata Section (optional)
+   - Describes the data structure
+   - Uses YAML-style indentation (2 spaces per level)
+   - Stores column information, labels, formats
+
+2. Data Section
+   - Contains the actual data values
+   - For uniform datasets: uses tabular format
+   - For non-uniform: uses nested objects/arrays
+
+METADATA SECTION
+================================================================================
+
+Format:
+  _metadata:
+    key: value
+    nested_key:
+      sub_key: value
+      sub_key2: value
+
+SAS-specific metadata:
+  _metadata:
+    source: SAS dataset
+    schema_name: DATASET_NAME       # SAS dataset name
+    columns: N                      # Number of columns
+    rows: N                         # Number of rows
+    dataset_label: Label text       # Dataset label 
+    column_info:
+      COLUMN1:
+        type: numeric|character|date|datetime
+        label: Variable label
+        format: SAS format (e.g., DATE9., $20.)
+      COLUMN2:
+        type: ...
+        label: ...
+
+Indentation rules:
+  - Level 0: _metadata:
+  - Level 1: main keys (2 spaces)
+  - Level 2: column names (4 spaces)
+  - Level 3: column properties (6 spaces)
+
+DATA SECTION - TABULAR FORMAT
+================================================================================
+
+For uniform datasets (all rows have same structure):
+
+Format:
+  TABLENAME[row_count]{column1,column2,column3}:
+    value1,value2,value3
+    value4,value5,value6
+    value7,value8,value9
+
+Example:
+  ADSL[5]{STUDYID,USUBJID,AGE,SEX}:
+    STUDY001,001-001,45.0,M
+    STUDY001,001-002,52.0,F
+    STUDY001,001-003,38.0,M
+    STUDY001,001-004,61.0,F
+    STUDY001,001-005,44.0,M
+
+Rules:
+  - Table header: NAME[count]{columns}:
+  - Each row indented 2 spaces
+  - Values separated by commas
+  - Missing values represented as empty string
+  - String values quoted if they contain: , " \n or are empty
+
+VALUE ENCODING
+================================================================================
+
+Numeric values:
+  - Written as decimal: 123.45
+  - Scientific notation: 1.23e10
+  - Missing: (empty, no space)
+  - Integers: 42 (no decimal point if whole number)
+
+Character values:
+  - Simple strings: Hello
+  - Quoted strings: "Hello, World"
+  - Empty string: ""
+  - Must quote if contains: comma, quotes, newline, or is empty
+
+Date values:
+  - Format: YYYY-MM-DD
+  - Example: 2024-01-15
+  - Missing: (empty)
+
+Datetime values:
+  - Format: YYYY-MM-DD HH:MM:SS
+  - Example: 2024-01-15 14:30:00
+  - Missing: (empty)
+
+Boolean values:
+  - true or false (lowercase)
+
+STRING ESCAPING
+================================================================================
+
+When quoting strings, escape these characters:
+  - Backslash: \ → \\
+  - Quote: " → \"
+  - Newline: (newline) → \n
+  - Carriage return: (CR) → \r
+
+Example:
+  Original: He said "Hello"
+  Escaped:  "He said \"Hello\""
+
+COMPLETE EXAMPLE
+================================================================================
+
+_metadata:
+  source: SAS dataset
+  schema_name: DM
+  columns: 8
+  rows: 3
+  dataset_label: Demographics
+  column_info:
+    STUDYID:
+      type: character
+      label: Study Identifier
+    USUBJID:
+      type: character
+      label: Unique Subject Identifier
+    AGE:
+      type: numeric
+      label: Age
+      format: 3.
+    SEX:
+      type: character
+      label: Sex
+    RFSTDTC:
+      type: character
+      label: Subject Reference Start Date/Time
+    RFENDTC:
+      type: character
+      label: Subject Reference End Date/Time
+    ARM:
+      type: character
+      label: Description of Planned Arm
+    COUNTRY:
+      type: character
+      label: Country
+
+DM[3]{STUDYID,USUBJID,AGE,SEX,RFSTDTC,RFENDTC,ARM,COUNTRY}:
+  CDISCPILOT01,01-701-1015,63.0,F,2014-01-02,2014-07-02,Placebo,USA
+  CDISCPILOT01,01-701-1023,64.0,M,2014-01-03,2014-07-03,Xanomeline Low Dose,USA
+  CDISCPILOT01,01-701-1028,71.0,M,2014-01-05,2014-07-05,Xanomeline High Dose,USA
+
+TOKEN EFFICIENCY
+================================================================================
+
+Comparison for same CDISC LB dataset:
+
+JSON format:        ~850000 tokens
+TOON format:        ~420000 tokens
+Token reduction:     50.6%
+
+The savings come from:
+  - No repeated key names in data rows
+  - Compact tabular layout
+  - Minimal syntax overhead
+  - Efficient number representation
+
+BEST PRACTICES
+================================================================================
+
+1. Use tabular format for uniform datasets
+2. Include complete metadata for round-trip conversion
+3. Preserve column order from original dataset
+4. Use appropriate precision for numeric values
+5. Quote all character values that might contain special characters
+6. Include dataset and variable labels for documentation
+
+COMPATIBILITY
+================================================================================
+
+TOON files created by SAS macros:
+  ✓ Can be converted back to SAS datasets
+  ✓ Preserve all metadata (types, labels, formats)
+  ✓ Maintain numeric precision
+  ✓ Handle special characters correctly
+
+For more information:
+  - TOON specification: https://github.com/toon-format/spec 
+
+================================================================================
