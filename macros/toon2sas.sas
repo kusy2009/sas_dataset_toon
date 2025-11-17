@@ -201,56 +201,57 @@
 
 %macro _parse_data_section(infile=, libname=, dataset=);
 
-    /* Declare local macro variables for building DATA step statements */
-    %local i vname vtype vlabel vlen vfmt input_stmt length_stmt label_stmt format_stmt;
+    %local i vname vtype vlabel vlen vfmt input_stmt length_stmt label_stmt format_stmt informat_stmt;
 
-    /* Initialize statement builders */
     %let input_stmt=;
     %let length_stmt=;
     %let label_stmt=;
     %let format_stmt=;
+    %let informat_stmt=;
 
-    /* Loop through all parsed variables to construct SAS statements */
+    /* Build statements for each variable */
     %do i=1 %to &_nvars_;
-        %let vname = %superq(_varname&i);
-
-        /* Skip empty variable names to avoid syntax errors */
+        %let vname  = %superq(_varname&i);
         %if %length(&vname) > 0 %then %do;
 
-            /* Retrieve metadata for the current variable */
             %let vtype  = %superq(_vartype&i);
             %let vlabel = %superq(_varlabel&i);
             %let vlen   = %superq(_varlen&i);
             %let vfmt   = %superq(_varfmt&i);
 
-            /* Build LENGTH statement based on type and length */
+            /* LENGTH statement */
             %if &vtype = character %then %do;
                 %if %length(&vlen) > 0 %then %do;
                     %let length_stmt = &length_stmt &vname $&vlen;
                 %end;
                 %else %do;
-                    /* Default length for character variables if not specified */
                     %let length_stmt = &length_stmt &vname $2000;
                 %end;
             %end;
             %else %do;
-                /* Default length for numeric variables */
                 %let length_stmt = &length_stmt &vname 8;
+
+                /* Add informat for datetime/date */
+                %if %index(%upcase(&vfmt), DATETIME) > 0 %then %do;
+                    %let informat_stmt = &informat_stmt &vname datetime19.;
+                %end;
+                %else %if %index(%upcase(&vfmt), DATE) > 0 %then %do;
+                    %let informat_stmt = &informat_stmt &vname yymmdd10.;
+                %end;
             %end;
 
-            /* Build LABEL statement if label is provided */
+            /* LABEL statement */
             %if %length(&vlabel) > 0 %then %do;
                 %let label_stmt = &label_stmt &vname = "&vlabel";
             %end;
 
-            /* Build FORMAT statement if format is provided */
+            /* FORMAT statement */
             %if %length(&vfmt) > 0 %then %do;
                 %let format_stmt = &format_stmt &vname &vfmt;
             %end;
 
-            /* Build INPUT statement (no informat used) */
-            %let input_stmt = &input_stmt &vname;
-            %let input_stmt = &input_stmt %str( );
+            /* INPUT statement */
+            %let input_stmt = &input_stmt &vname %str( );
 
         %end;
         %else %do;
@@ -258,23 +259,21 @@
         %end;
     %end;
 
-    /* Step 1: Determine the line number where actual data starts */
+    /* Step 1: Find the line number where data starts */
     data _null_;
         infile "&infile" lrecl=32767 truncover;
         retain line_no 0;
         length line $32767;
         line_no + 1;
         input line $char32767.;
-
-        /* Detect header line using JSON-like structure markers */
         if index(line, "[") > 0 and index(line, "]") > 0 and 
            index(line, "{") > 0 and index(line, "}") > 0 then do;
-            call symputx('data_start_line', line_no + 1); /* Data starts after header */
+            call symputx('data_start_line', line_no + 1); /* data starts after header */
             stop;
         end;
     run;
 
-    /* Step 2: Read data from the identified starting line */
+    /* Step 2: Read data from that line onward */
     data &libname..&dataset 
         %if %length(&_dataset_label_) > 0 %then %do; 
             (label="&_dataset_label_") 
@@ -282,17 +281,35 @@
         
         infile "&infile" lrecl=32767 truncover dsd dlm=',' firstobs=&data_start_line end=eof;
 
-        /* Apply constructed LENGTH, LABEL, and FORMAT statements */
         length &length_stmt;
+        informat &informat_stmt;
         label &label_stmt;
         format &format_stmt;
 
-        /* Read variables using constructed INPUT statement */
         input &input_stmt;
 
-        /* Output each row and update row count macro variable */
+        /* Unescape TOON-encoded character values */
+        %do i=1 %to &_nvars_;
+            %let vname = &&_varname&i;
+            %let vtype = &&_vartype&i;
+
+            %if &vtype = character %then %do;
+                /* Strip outer quotes if present */
+                if substr(&vname, 1, 1) = '"' and substr(&vname, length(&vname), 1) = '"' then do;
+                    &vname = substr(&vname, 2, length(&vname) - 2);
+                end;
+
+                /* Unescape inner content */
+                &vname = tranwrd(&vname, '\"', '"');
+                &vname = tranwrd(&vname, '\\', '\');
+                &vname = tranwrd(&vname, '\n', '0A'x);
+                &vname = tranwrd(&vname, '\r', '0D'x);
+            %end;
+        %end;
+
         output;
         call symputx('_rows_read_', _n_, 'G');
     run;
 
 %mend _parse_data_section;
+
